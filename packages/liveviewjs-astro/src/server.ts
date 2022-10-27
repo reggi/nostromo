@@ -1,11 +1,9 @@
-import type * as vite from 'vite';
-import type { LiveViewRouter } from "liveviewjs";
-import type {Express, Router} from 'express'
-import express, { NextFunction, Request, Response } from "express";
 import session, { MemoryStore } from "express-session";
 import { Server } from "http";
+import type { LiveViewRouter } from "liveviewjs";
+import type * as vite from 'vite';
 import { WebSocketServer } from "ws";
-import { NodeExpressLiveViewServer } from "@liveviewjs/express";
+import { AstroLiveViewServer } from "./astroServerAdaptor";
 import { htmlPageTemplate, wrapperTemplate } from "./liveTemplates";
 
 // you'd want to set this to some secure, random string in production
@@ -18,7 +16,10 @@ declare module "express-session" {
   }
 }
 
-export const routes = (app: vite.ViteDevServer['middlewares'], router?: LiveViewRouter) => {
+export const routes = (server: vite.ViteDevServer, router?: LiveViewRouter) => {
+  
+  const app = server['middlewares']
+  
   app.use((req, res, next) => {
     session({
       secret: signingSecret,
@@ -36,52 +37,70 @@ export const routes = (app: vite.ViteDevServer['middlewares'], router?: LiveView
 
   if (router) {
   
-  app.use((req, res, next) => {
-    res.send = res.end
-    req.path = req.url
-    req.get = () => 'localhost:3000/'
-    req.originalUrl = req.url
-    res.format = (v) => v.html()
-    return next()
-  });
+    app.use((req, res, next) => {
+      res.send = res.end
+      req.path = req.url
+      req.get = () => 'localhost:3000/'
+      req.originalUrl = req.url
+      res.format = (v) => v.html()
+      return next()
+    });
 
-  // basic middleware to log requests
-  // app.use((req, res, next) => {
-  //   if (!req.path) return next(new Error('url not available'))
-  //   const isLiveView = router.hasOwnProperty(req.path);
-  //   console.log(`${req.method} ${isLiveView ? "LiveView" : ""} ${req.url} - ${new Date().toISOString()}`);
-  //   next();
-  // });
+    // basic middleware to log requests
+    // app.use((req, res, next) => {
+    //   if (!req.path) return next(new Error('url not available'))
+    //   const isLiveView = router.hasOwnProperty(req.path);
+    //   console.log(`${req.method} ${isLiveView ? "LiveView" : ""} ${req.url} - ${new Date().toISOString()}`);
+    //   next();
+    // });
 
-  // initialize the LiveViewServer
-  const liveView = new NodeExpressLiveViewServer(
-    router,
-    htmlPageTemplate,
-    { title: "Express Demo", suffix: " · LiveViewJS" },
-    {
-      serDeSigningSecret: signingSecret,
-      wrapperTemplate: wrapperTemplate,
-    }
-  );
+    // initialize the LiveViewServer
+    const liveView = new AstroLiveViewServer(
+      router,
+      htmlPageTemplate,
+      { title: "Express Demo", suffix: " · LiveViewJS" },
+      {
+        serDeSigningSecret: signingSecret,
+        wrapperTemplate: wrapperTemplate,
+      }
+    );
 
-  // setup the LiveViewJS middleware
-  app.use(async (req, res, next) => {
-    await liveView.httpMiddleware()(req as any, res as any, next)
-  });
+    // setup the LiveViewJS middleware
+    app.use(async (req, res, next) => {    
+      await liveView.httpMiddleware()(req as any, res as any, next)
+    });
 
-  // configure express to handle both http and websocket requests
-  const httpServer = new Server();
-  const wsServer = new WebSocketServer({
-    server: httpServer,
-  });
+    // configure express to handle both http and websocket requests
+    const httpServer = new Server();
 
-  // send http requests to the express app
-  httpServer.on("request", app);
 
-  // initialize the LiveViewJS websocket message router
-  const liveViewWsMiddleware = liveView.wsMiddleware();
-  liveViewWsMiddleware(wsServer);
+    const wsServer = new WebSocketServer({
+      server: server.httpServer!,
+      // server: httpServer,
+      // noServer: true,
+      // path: "/live",
+    });
+  
+    // server.httpServer!.on('upgrade', function (request, socket, head) {      
+    //   // if(request.url?.startsWith("/live")) {
+    //     console.log("http Upgrade", request.url)
+    //     wsServer.handleUpgrade(request, socket, head, function (ws) {
+    //       console.log("handling Upgrade")
+    //       wsServer.emit('connection', ws, request);
+    //     })
+    //   // }
+    // })
+    server.ws.on('connection', (ws) => {
+      console.log("wss connection", ws.binaryType)
+      wsServer.emit('connection', ws);
+    })
 
+    // send http requests to the express app
+    // httpServer.on("request", app);
+
+    // initialize the LiveViewJS websocket message router
+    const liveViewWsMiddleware = liveView.wsMiddleware();
+    liveViewWsMiddleware(wsServer);
   }
 
   return app
