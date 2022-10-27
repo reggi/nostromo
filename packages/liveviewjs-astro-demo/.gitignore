@@ -1,6 +1,7 @@
 # build output
 dist/
 .output/
+public/js
 
 # dependencies
 node_modules/

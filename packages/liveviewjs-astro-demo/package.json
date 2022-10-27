@@ -15,5 +15,10 @@
     "liveviewjs": "^0.7.5",
     "liveviewjs-astro": "*",
     "tsconfig": "*"
+  },
+  "devDependencies": {
+    "phoenix": "^1.6.12",
+    "phoenix_html": "^3.2.0",
+    "phoenix_live_view": "^0.18.0"
   }
 }
